@@ -151,13 +151,22 @@ bool Texture::create(unsigned int width, unsigned int height)
     glCheck(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, m_isRepeated ? GL_REPEAT : GL_CLAMP_TO_EDGE));
     if (m_statusMipmaps > 0)
         m_statusMipmaps = -m_statusMipmaps;
-    if (m_statusMipmaps == -3)
+    if (m_statusMipmaps == -4)
     {
         if (m_needsMipmaps != 0)
         {
-            // It might be useful to glEnable(GL_TEXTURE_2D) here and around all calls to this function
+            // It might be useful to glEnable(GL_TEXTURE_2D) around all calls to
+            // glGenerateMipmap and/or glGenerateMipmapEXT
             // for maximum compatibility with a few old, buggy ATI drivers
             // see http://www.opengl.org/wiki/Common_Mistakes#Automatic_mipmap_generation
+            glCheck(glGenerateMipmap(GL_TEXTURE_2D));
+            m_statusMipmaps = 4;
+        }
+    }
+    else if (m_statusMipmaps == -3)
+    {
+        if (m_needsMipmaps != 0)
+        {
             glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
             m_statusMipmaps = 3;
         }
@@ -260,8 +269,13 @@ bool Texture::loadFromImage(const Image& image, const IntRect& area)
             }
 
             // Regenerate mipmaps if needed (they should be enabled by create already)
-            if (m_needsMipmaps != 0 && m_statusMipmaps == 3)
-                glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
+            if (m_needsMipmaps != 0)
+            {
+                if (m_statusMipmaps == 4)
+                    glCheck(glGenerateMipmap(GL_TEXTURE_2D));
+                else if (m_statusMipmaps == 3)
+                    glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
+            }
 
             // Force an OpenGL flush, so that the texture will appear updated
             // in all contexts immediately (solves problems in multi-threaded apps)
@@ -369,7 +383,9 @@ void Texture::update(const Uint8* pixels, unsigned int width, unsigned int heigh
         glCheck(glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
         if (m_needsMipmaps != 0)
         {
-            if (m_statusMipmaps == -3 || m_statusMipmaps == 3)
+            if (m_statusMipmaps == -4 || m_statusMipmaps == 4)
+                glCheck(glGenerateMipmap(GL_TEXTURE_2D));
+            else if (m_statusMipmaps == -3 || m_statusMipmaps == 3)
                 glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
             // Use this chance to activate mipmaps if requested and still needed
             if (m_statusMipmaps <= -2)
@@ -426,7 +442,9 @@ void Texture::update(const Window& window, unsigned int x, unsigned int y)
         glCheck(glCopyTexSubImage2D(GL_TEXTURE_2D, 0, x, y, 0, 0, window.getSize().x, window.getSize().y));
         if (m_needsMipmaps != 0)
         {
-            if (m_statusMipmaps == -3 || m_statusMipmaps == 3)
+            if (m_statusMipmaps == -4 || m_statusMipmaps == 4)
+                glCheck(glGenerateMipmap(GL_TEXTURE_2D));
+            else if (m_statusMipmaps == -3 || m_statusMipmaps == 3)
                 glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
             // Use this chance to activate mipmaps if requested and still needed
             if (m_statusMipmaps <= -2)
@@ -500,7 +518,9 @@ void Texture::setUsedMipmaps(unsigned int mipmaps)
         priv::ensureGlewInit();
 
         // Test newer, better extensions earlier
-        if (GLEW_EXT_framebuffer_object)
+        if (GLEW_VERSION_3_0 || GLEW_ARB_framebuffer_object)
+            m_statusMipmaps = -4;
+        else if (GLEW_EXT_framebuffer_object)
             m_statusMipmaps = -3;
         else if (GLEW_VERSION_1_4 || GLEW_SGIS_generate_mipmap)
             m_statusMipmaps = -2;
@@ -526,7 +546,12 @@ void Texture::setUsedMipmaps(unsigned int mipmaps)
             priv::TextureSaver save;
 
             glCheck(glBindTexture(GL_TEXTURE_2D, m_texture));
-            if (m_needsMipmaps != 0 && m_statusMipmaps == -3)
+            if (m_needsMipmaps != 0 && m_statusMipmaps == -4)
+            {
+                glCheck(glGenerateMipmap(GL_TEXTURE_2D));
+                m_statusMipmaps = 4;
+            }
+            else if (m_needsMipmaps != 0 && m_statusMipmaps == -3)
             {
                 glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
                 m_statusMipmaps = 3;
