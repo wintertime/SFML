@@ -151,7 +151,18 @@ bool Texture::create(unsigned int width, unsigned int height)
     glCheck(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, m_isRepeated ? GL_REPEAT : GL_CLAMP_TO_EDGE));
     if (m_statusMipmaps > 0)
         m_statusMipmaps = -m_statusMipmaps;
-    if (m_statusMipmaps == -2)
+    if (m_statusMipmaps == -3)
+    {
+        if (m_needsMipmaps != 0)
+        {
+            // It might be useful to glEnable(GL_TEXTURE_2D) here and around all calls to this function
+            // for maximum compatibility with a few old, buggy ATI drivers
+            // see http://www.opengl.org/wiki/Common_Mistakes#Automatic_mipmap_generation
+            glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
+            m_statusMipmaps = 3;
+        }
+    }
+    else if (m_statusMipmaps == -2)
     {
         glCheck(glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, m_needsMipmaps ? GL_TRUE : GL_FALSE));
         if (m_needsMipmaps != 0)
@@ -247,6 +258,10 @@ bool Texture::loadFromImage(const Image& image, const IntRect& area)
                 glCheck(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, i, rectangle.width, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
                 pixels += 4 * width;
             }
+
+            // Regenerate mipmaps if needed (they should be enabled by create already)
+            if (m_needsMipmaps != 0 && m_statusMipmaps == 3)
+                glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
 
             // Force an OpenGL flush, so that the texture will appear updated
             // in all contexts immediately (solves problems in multi-threaded apps)
@@ -352,15 +367,20 @@ void Texture::update(const Uint8* pixels, unsigned int width, unsigned int heigh
         // Copy pixels from the given array to the texture
         glCheck(glBindTexture(GL_TEXTURE_2D, m_texture));
         glCheck(glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
-        // Use this chance to activate mipmaps if requested and still needed
-        if (m_needsMipmaps != 0 && m_statusMipmaps == -2)
+        if (m_needsMipmaps != 0)
         {
-            m_statusMipmaps = -m_statusMipmaps;
-            glCheck(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                    m_isSmooth ? (m_needsMipmaps==1 ? GL_LINEAR_MIPMAP_NEAREST
-                                                                    : GL_LINEAR_MIPMAP_LINEAR)
-                                               : (m_needsMipmaps==1 ? GL_NEAREST_MIPMAP_NEAREST
-                                                                    : GL_NEAREST_MIPMAP_LINEAR)));
+            if (m_statusMipmaps == -3 || m_statusMipmaps == 3)
+                glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
+            // Use this chance to activate mipmaps if requested and still needed
+            if (m_statusMipmaps <= -2)
+            {
+                m_statusMipmaps = -m_statusMipmaps;
+                glCheck(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                        m_isSmooth ? (m_needsMipmaps==1 ? GL_LINEAR_MIPMAP_NEAREST
+                                                                        : GL_LINEAR_MIPMAP_LINEAR)
+                                                   : (m_needsMipmaps==1 ? GL_NEAREST_MIPMAP_NEAREST
+                                                                        : GL_NEAREST_MIPMAP_LINEAR)));
+            }
         }
         m_pixelsFlipped = false;
         m_cacheId = getUniqueId();
@@ -404,15 +424,20 @@ void Texture::update(const Window& window, unsigned int x, unsigned int y)
         // Copy pixels from the back-buffer to the texture
         glCheck(glBindTexture(GL_TEXTURE_2D, m_texture));
         glCheck(glCopyTexSubImage2D(GL_TEXTURE_2D, 0, x, y, 0, 0, window.getSize().x, window.getSize().y));
-        // Use this chance to activate mipmaps if requested and still needed
-        if (m_needsMipmaps != 0 && m_statusMipmaps == -2)
+        if (m_needsMipmaps != 0)
         {
-            m_statusMipmaps = -m_statusMipmaps;
-            glCheck(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                    m_isSmooth ? (m_needsMipmaps==1 ? GL_LINEAR_MIPMAP_NEAREST
-                                                                    : GL_LINEAR_MIPMAP_LINEAR)
-                                               : (m_needsMipmaps==1 ? GL_NEAREST_MIPMAP_NEAREST
-                                                                    : GL_NEAREST_MIPMAP_LINEAR)));
+            if (m_statusMipmaps == -3 || m_statusMipmaps == 3)
+                glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
+            // Use this chance to activate mipmaps if requested and still needed
+            if (m_statusMipmaps <= -2)
+            {
+                m_statusMipmaps = -m_statusMipmaps;
+                glCheck(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                        m_isSmooth ? (m_needsMipmaps==1 ? GL_LINEAR_MIPMAP_NEAREST
+                                                                        : GL_LINEAR_MIPMAP_LINEAR)
+                                                   : (m_needsMipmaps==1 ? GL_NEAREST_MIPMAP_NEAREST
+                                                                        : GL_NEAREST_MIPMAP_LINEAR)));
+            }
         }
         m_pixelsFlipped = true;
         m_cacheId = getUniqueId();
@@ -474,7 +499,10 @@ void Texture::setUsedMipmaps(unsigned int mipmaps)
         // Make sure that GLEW is initialized
         priv::ensureGlewInit();
 
-        if (GLEW_VERSION_1_4 || GLEW_SGIS_generate_mipmap)
+        // Test newer, better extensions earlier
+        if (GLEW_EXT_framebuffer_object)
+            m_statusMipmaps = -3;
+        else if (GLEW_VERSION_1_4 || GLEW_SGIS_generate_mipmap)
             m_statusMipmaps = -2;
         else
         {
@@ -498,8 +526,16 @@ void Texture::setUsedMipmaps(unsigned int mipmaps)
             priv::TextureSaver save;
 
             glCheck(glBindTexture(GL_TEXTURE_2D, m_texture));
-            // Update mipmap generation as needed
-            glCheck(glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, m_needsMipmaps ? GL_TRUE : GL_FALSE));
+            if (m_needsMipmaps != 0 && m_statusMipmaps == -3)
+            {
+                glCheck(glGenerateMipmapEXT(GL_TEXTURE_2D));
+                m_statusMipmaps = 3;
+            }
+            else
+            {
+                // Update mipmap generation as needed
+                glCheck(glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, m_needsMipmaps ? GL_TRUE : GL_FALSE));
+            }
             if (m_needsMipmaps != 0 && m_statusMipmaps > 0)
             {
                 // We need mipmaps and have them already, use them now
