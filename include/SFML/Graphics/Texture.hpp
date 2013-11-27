@@ -545,6 +545,14 @@ private :
     friend class RenderTarget;
 
     ////////////////////////////////////////////////////////////
+    /// \brief Update mipmaps if needed
+    ///
+    /// \see setUsedMipmaps, getUsedMipmaps, getRequestedMipmaps, hasMipmaps
+    ///
+    ////////////////////////////////////////////////////////////
+    void updateMipmaps();
+
+    ////////////////////////////////////////////////////////////
     /// \brief Get a valid image size according to hardware support
     ///
     /// This function checks whether the graphics driver supports
