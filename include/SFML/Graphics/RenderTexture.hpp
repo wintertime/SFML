@@ -109,6 +109,32 @@ public :
     bool isSmooth() const;
 
     ////////////////////////////////////////////////////////////
+    /// \brief Enable creation and use of mipmaps or disable mipmap filtering
+    ///
+    /// This method is similar to Texture::setUsedMipmaps.
+    /// It is disabled by default.
+    ///
+    /// \param mipmaps 0 to disable it, 1 or 2 to choose number of mipmap reads
+    ///
+    /// \see getUsedMipmaps
+    ///
+    ////////////////////////////////////////////////////////////
+    void setUsedMipmaps(unsigned int mipmaps);
+
+    ////////////////////////////////////////////////////////////
+    /// \brief Tell how many mipmaps are used currently
+    ///
+    /// This method lets you find out if mipmaps are activated
+    /// for the internal texture.
+    ///
+    /// \return 0 if disabled, 1 or 2 if that many mipmaps should be used
+    ///
+    /// \see setUsedMipmaps
+    ///
+    ////////////////////////////////////////////////////////////
+    Uint8 getUsedMipmaps() const;
+
+    ////////////////////////////////////////////////////////////
     /// \brief Enable or disable texture repeating
     ///
     /// This function is similar to Texture::setRepeated.

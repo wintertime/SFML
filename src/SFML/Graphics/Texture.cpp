@@ -657,6 +657,11 @@ void Texture::updateMipmaps()
 {
     if (m_needsMipmaps != 0)
     {
+        // Make sure that the current texture binding will be preserved
+        priv::TextureSaver save;
+
+        glCheck(glBindTexture(GL_TEXTURE_2D, m_texture));
+
         // It might be useful to glEnable(GL_TEXTURE_2D) around all calls to
         // glGenerateMipmap and/or glGenerateMipmapEXT
         // for maximum compatibility with a few old, buggy ATI drivers

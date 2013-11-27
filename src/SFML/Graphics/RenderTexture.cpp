@@ -29,6 +29,7 @@
 #include <SFML/Graphics/RenderTextureImplFBO.hpp>
 #include <SFML/Graphics/RenderTextureImplDefault.hpp>
 #include <SFML/System/Err.hpp>
+#include <cassert>
 
 
 namespace sf
@@ -67,6 +68,10 @@ bool RenderTexture::create(unsigned int width, unsigned int height, bool depthBu
     {
         // Use frame-buffer object (FBO)
         m_impl = new priv::RenderTextureImplFBO;
+        // Force the texture into using the same EXT extension as FBO, because
+        // of incompatibility with same functions of OpenGL3.0 or ARB extension
+        assert(m_texture.m_statusMipmaps == 0 || m_texture.m_statusMipmaps == -3 || m_texture.m_statusMipmaps == 3);
+        m_texture.m_statusMipmaps = -3;
     }
     else
     {
@@ -100,6 +105,20 @@ bool RenderTexture::isSmooth() const
 
 
 ////////////////////////////////////////////////////////////
+void RenderTexture::setUsedMipmaps(unsigned int mipmaps)
+{
+    m_texture.setUsedMipmaps(mipmaps);
+}
+
+
+////////////////////////////////////////////////////////////
+Uint8 RenderTexture::getUsedMipmaps() const
+{
+    return m_texture.getUsedMipmaps();
+}
+
+
+////////////////////////////////////////////////////////////
 void RenderTexture::setRepeated(bool repeated)
 {
     m_texture.setRepeated(repeated);
@@ -128,6 +147,7 @@ void RenderTexture::display()
     {
         m_impl->updateTexture(m_texture.m_texture);
         m_texture.m_pixelsFlipped = true;
+        m_texture.updateMipmaps();
     }
 }
 
